@@ -1,8 +1,7 @@
 # zaiko-relay
 
-Zaiko の HLS 配信をローカルで再生するための HTTP relay です。公式 Web で再生中に playback token の再生成がうまく動かない場合に、relay が upstream の 401 を受け取ると token を取り直して同じリクエストを再試行します。
-
-再生例では FFmpeg の ffplay を使います。relay は playlist や segment を解析・書き換えず、そのまま中継します。
+Zaiko の HLS 配信をローカルで再生するための HTTP relay です。
+公式 Web クライアントでは再生中に再生が止まったり解像度が下がってしまうため、ローカルで中継して安定した再生を実現します。
 
 ```sh
 uv run python zaiko-relay.py 'https://.../tokengenerate?payload=...'
