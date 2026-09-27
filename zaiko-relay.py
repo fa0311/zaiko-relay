@@ -37,7 +37,7 @@ class Relay:
     async def __aenter__(self) -> Self:
         self.client = httpx2.AsyncClient(follow_redirects=True, http2=True)
         user_agents = (await self.client.get(self.user_agent_url)).json()
-        self.headers = self.HEADERS | {"user-agent": user_agents["macos-chrome-xhr"]}
+        self.headers = self.HEADERS | {"user-agent": user_agents["chrome-xhr"]}
         await self.refresh()
         return self
 
@@ -56,22 +56,23 @@ class Relay:
         response.raise_for_status()
         self.playback_url = TokenResponse.model_validate(response.json()).playback_url
 
-    async def fetch(self, path: str, request: Request) -> httpx2.Response:
+    async def fetch(
+        self,
+        path: str,
+        query: str,
+        headers: dict[str, str],
+    ) -> httpx2.Response:
         assert self.client is not None
         assert self.headers is not None
         assert self.playback_url is not None
 
         playback_url = self.playback_url
         url = urljoin(playback_url, path)
-        if request.url.query:
-            url = f"{url}?{request.url.query}"
-        headers = self.headers | {
-            key: value
-            for key, value in request.headers.items()
-            if key.lower() in {"range", "if-range"}
-        }
+        if query:
+            url = f"{url}?{query}"
         response = await self.client.send(
-            self.client.build_request("GET", url, headers=headers), stream=True
+            self.client.build_request("GET", url, headers=self.headers | headers),
+            stream=True,
         )
         if response.status_code == 401:
             await response.aclose()
@@ -79,10 +80,11 @@ class Relay:
                 if self.playback_url == playback_url:
                     await self.refresh()
             url = urljoin(self.playback_url, path)
-            if request.url.query:
-                url = f"{url}?{request.url.query}"
+            if query:
+                url = f"{url}?{query}"
             response = await self.client.send(
-                self.client.build_request("GET", url, headers=headers), stream=True
+                self.client.build_request("GET", url, headers=self.headers | headers),
+                stream=True,
             )
         return response
 
@@ -110,7 +112,12 @@ def main(token_url: Annotated[str, typer.Argument()]) -> None:
         request: Request,
         current_relay: Annotated[Relay, Depends(get_relay)],
     ) -> Response:
-        upstream = await current_relay.fetch(path, request)
+        headers = {
+            key: value
+            for key, value in request.headers.items()
+            if key.lower() in {"range", "if-range"}
+        }
+        upstream = await current_relay.fetch(path, request.url.query, headers)
         return StreamingResponse(
             upstream.aiter_raw(),
             status_code=upstream.status_code,
